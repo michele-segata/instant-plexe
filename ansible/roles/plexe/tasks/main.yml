@@ -1,0 +1,85 @@
+---
+#
+# Ansible Playbook for building Instant Plexe
+# Copyright (C) 2018 Christoph Sommer <sommer@ccs-labs.org>
+#
+# Documentation for this template is at http://veins.car2x.org/
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+
+
+- name: Install base packages
+  apt:
+    state: present
+    name:
+      - xterm
+      - clang-format
+      - uncrustify
+      - valgrind
+      - gdb
+      - lldb
+      - python-configparser
+
+- name: Create default directories
+  become_user: plexe
+  file:
+    path: /home/plexe/{{item}}
+    state: directory
+    owner: plexe
+    group: plexe
+    mode: 0755
+  with_items:
+    - src
+
+- name: Clone git
+  become_user: plexe
+  git:
+    repo: https://github.com/michele-segata/plexe.git
+    dest: /home/plexe/src/plexe
+    update: no
+
+- name: Prepare branch
+  become_user: plexe
+  shell: |
+    set -exu
+    git checkout -B plexe-{{ plexe_version }}-work {{ plexe_version }}
+  args:
+    executable: /bin/bash
+    chdir: /home/plexe/src/plexe
+
+- name: Build Plexe
+  become_user: plexe
+  shell: |
+    set -exu
+    source ~/.shrc
+    ./configure --with-veins=../veins
+    make -j2
+  args:
+    executable: /bin/bash
+    chdir: /home/plexe/src/plexe
+    creates: /home/plexe/src/plexe/src/libplexe.so
+
+- name: Import Plexe into Workspace
+  become_user: plexe
+  shell: |
+    set -exu
+    source ~/.shrc
+    xvfb-run ~/src/omnetpp/ide/omnetpp -data ~/workspace.omnetpp -nosplash -application org.eclipse.cdt.managedbuilder.core.headlessbuild -import .
+  args:
+    executable: /bin/bash
+    chdir: /home/plexe/src/plexe
+    creates: /home/plexe/workspace.omnetpp/.metadata/.plugins/org.eclipse.core.resources/.projects/plexe
+

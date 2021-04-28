@@ -1,0 +1,185 @@
+---
+#
+# Ansible Playbook for building Instant Plexe
+# Copyright (C) 2018 Christoph Sommer <sommer@ccs-labs.org>
+#
+# Documentation for this template is at http://veins.car2x.org/
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+
+
+- name: Create default directories for user
+  become_user: plexe
+  file:
+    path: /home/plexe/{{item}}
+    state: directory
+    owner: plexe
+    group: plexe
+    mode: 0755
+  with_items:
+    - .local/share/applications
+
+- name: Install base packages
+  apt:
+    state: present
+    name:
+      - epiphany-browser
+
+- name: Launcher Entry
+  become_user: plexe
+  copy:
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=OMNeT++ IDE
+      Exec=omnetpp -data /home/plexe/workspace.omnetpp -import /home/plexe/src/plexe/README.txt
+      Icon=/home/plexe/src/omnetpp/ide/icon.xpm
+      Categories=Science;
+      StartupWMClass=OMNeT++ IDE
+    dest: /home/plexe/.local/share/applications/omnetpp.desktop
+    mode: 0755
+
+- name: Profile directory for online documentation
+  file:
+    path: /home/plexe/.local/share/epiphany-plexe-onlinedocs
+    state: directory
+    owner: plexe
+    group: plexe
+    mode: 0755
+
+- name: Launcher file for online documentation
+  become_user: plexe
+  copy:
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=Veins documentation online
+      Exec=epiphany --application-mode --profile='/home/plexe/.local/share/epiphany-plexe-onlinedocs' 'http://plexe.car2x.org/'
+      Icon=help-faq
+      Categories=Science;
+      StartupWMClass=epiphany-plexe-onlinedocs
+    dest: /home/plexe/.local/share/epiphany-plexe-onlinedocs/epiphany-plexe-onlinedocs.desktop
+    mode: 0755
+
+- name: App file for online documentation
+  become_user: plexe
+  copy:
+    content: ""
+    dest: /home/plexe/.local/share/epiphany-plexe-onlinedocs/.app
+    mode: 0755
+
+- name: Launcher entry for online documentation
+  become_user: plexe
+  file:
+    src: /home/plexe/.local/share/epiphany-plexe-onlinedocs/epiphany-plexe-onlinedocs.desktop
+    dest: /home/plexe/.local/share/applications/epiphany-plexe-onlinedocs.desktop
+    state: link
+
+- name: Favourites
+  become_user: plexe
+  shell: |
+    set -exu
+    xvfb-run gsettings set org.gnome.shell favorite-apps "['omnetpp.desktop', 'epiphany-plexe-onlinedocs.desktop', 'firefox-esr.desktop', 'org.gnome.Nautilus.desktop', 'terminator.desktop']"
+
+- name: Copy background picture
+  become_user: plexe
+  copy:
+    src: "plexe-background.jpg"
+    dest: "/home/plexe/Documents/plexe-background.jpg"
+    mode: 0644
+
+- name: Background
+  become_user: plexe
+  shell: |
+    set -exu
+    xvfb-run gsettings set org.gnome.desktop.background picture-uri 'file:///home/plexe/Documents/plexe-background.jpg'
+
+- name: Disable Screensaver
+  become_user: plexe
+  shell: |
+    set -exu
+    xvfb-run gsettings set org.gnome.desktop.session idle-delay 0
+    xvfb-run gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type "nothing"
+
+- name: Script for graphical login
+  become_user: plexe
+  copy:
+    content: |
+      # Show help on first login
+      if [ -f ".plexe-first-login" ]; then
+        echo "not the first login"
+      else
+        gnome-help &
+        touch .plexe-first-login
+      fi
+    dest: /home/plexe/.gnomerc
+    mode: 0755
+
+- name: Script for gnome login
+  become_user: plexe
+  copy:
+    content: |
+      # Load common environment variables and shell config
+      . ~/.shrc
+    dest: /home/plexe/.profile
+    mode: 0755
+
+- name: Copy zshrc
+  become_user: plexe
+  copy:
+    src: ".zshrc"
+    dest: "/home/plexe/.zshrc"
+    mode: 0755
+
+- name: Script for zsh login
+  become_user: plexe
+  copy:
+    content: |
+      # Load common environment variables and shell config
+      . ~/.shrc
+    dest: /home/plexe/.zprofile
+    mode: 0755
+
+- name: Script for installing virtualbox-guest-tools
+  become_user: plexe
+  copy:
+    content: |
+      #!/bin/bash
+      set -e
+      sudo sh -c "echo 'deb http://httpredir.debian.org/debian buster non-free\ndeb http://security.debian.org/debian-security buster/updates non-free\ndeb http://httpredir.debian.org/debian buster-updates non-free' > /etc/apt/sources.list.d/debian-buster-nonfree.list"
+      sudo apt update
+      sudo apt install virtualbox-guest-additions-iso
+      sudo mount /usr/share/virtualbox/VBoxGuestAdditions.iso /mnt
+      sudo /mnt/VBoxLinuxAdditions.run || echo "Installation aborted. This is not necessarily a problem, so continuing anyway."
+      sudo umount /mnt
+      echo Please reboot machine to make sure changes are applied...
+    dest: /home/plexe/bin/virtualbox-guest-install.sh
+    mode: 0755
+
+- name: Enable automatic login
+  replace:
+    dest: /etc/gdm3/daemon.conf
+    regexp: '.*AutomaticLoginEnable.*'
+    replace: 'AutomaticLoginEnable = true'
+    backup: no
+
+- name: Automatic login for user plexe
+  replace:
+    dest: /etc/gdm3/daemon.conf
+    regexp: '.*AutomaticLogin =.*'
+    replace: 'AutomaticLogin = plexe'
+    backup: no
+

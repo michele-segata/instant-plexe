@@ -1,0 +1,78 @@
+---
+#
+# Ansible Playbook for building Instant Plexe
+# Copyright (C) 2018 Christoph Sommer <sommer@ccs-labs.org>
+#
+# Documentation for this template is at http://veins.car2x.org/
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+
+
+- name: Install R
+  apt: name={{item}} state=installed
+  with_items:
+    - r-base
+
+- name: Create R config directory
+  file:
+    path: /home/plexe/{{item}}
+    state: directory
+    owner: plexe
+    group: plexe
+    mode: 0755
+  with_items:
+    - R
+
+- name: Create R profile
+  file:
+    path: /home/plexe/{{item}}
+    state: touch
+    owner: plexe
+    group: plexe
+    mode: 0755
+  with_items:
+    - .Rprofile
+
+- name: Update .Rprofile
+  lineinfile:
+    dest: /home/plexe/.Rprofile
+    line: ".libPaths(c(.libPaths(), '/home/plexe/R'))"
+
+- name: Install R libraries
+  become_user: plexe
+  shell: |
+    set -exu
+    source ~/.profile
+    R -e "install.packages(c('ggplot2', 'reshape2', 'data.table'), lib='/home/plexe/R', repos='https://ftp.fau.de/cran/')"
+  args:
+    executable: /bin/bash
+    chdir: /home/plexe/
+
+- name: Download OMNeT++ R library
+  get_url:
+    url: "{{ omnetpp_r_tarball_url }}"
+    dest: "/home/plexe/src/{{ omnetpp_r_tarball_filename }}"
+    checksum: "sha1:{{ omnetpp_r_tarball_sha1 }}"
+
+- name: Install R OMNeT++ library
+  become_user: plexe
+  shell: |
+    set -exu
+    source ~/.profile
+    R -e "install.packages('omnetpp_0.7-1.tar.gz', lib='/home/plexe/R', repos=NULL)"
+  args:
+    executable: /bin/bash
+    chdir: /home/plexe/src
